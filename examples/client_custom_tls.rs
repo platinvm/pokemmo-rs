@@ -3,7 +3,7 @@ use std::net::TcpStream;
 use pokemmo_rs::prelude::*;
 
 pub fn main() {
-    let stream = TcpStream::connect("loginserver.pokemmo.com:2106").unwrap();
+    let stream = TcpStream::connect("127.0.0.1:2106").unwrap();
     let mut stream = LoggingStream::new(stream);
     let mut context = Context::default();
 
@@ -21,15 +21,17 @@ pub fn main() {
     context.server_signature = Some(server_hello.signature().clone());
     context.checksum_size = Some(server_hello.checksum_size());
 
-    let client_ready = ClientReady::default();
+    // Generate client's key pair
+    let client_secret_key = p256::SecretKey::random(&mut rand::thread_rng());
+    let client_public_key = client_secret_key.public_key();
+    let client_ready = ClientReady::new(client_public_key.clone());
 
     println!("[INFO]: Sending ClientReady");
     stream.write_packet(&client_ready, &context).unwrap();
     println!("[INFO]: Sent ClientReady");
-
-    context.client_secret_key = Some(client_ready.secret_key().clone());
-
-    println!("[INFO]: Successfully completed handshake with server.");
+    
+    context.client_public_key = Some(client_public_key);
+    context.client_secret_key = Some(client_secret_key);    println!("[INFO]: Successfully completed handshake with server.");
 
     if let Some(ref public_key) = context.server_public_key {
         let bytes = public_key.to_sec1_bytes();

@@ -1,25 +1,17 @@
 use crate::{Context, Payload};
-use p256::SecretKey;
+use p256::PublicKey;
 
 pub struct ClientReady {
-    secret_key: SecretKey,
+    public_key: PublicKey,
 }
 
 impl ClientReady {
-    pub fn new(secret_key: SecretKey) -> Self {
-        Self { secret_key: secret_key }
+    pub fn new(public_key: PublicKey) -> Self {
+        Self { public_key }
     }
 
-    pub fn secret_key(&self) -> &SecretKey {
-        &self.secret_key
-    }
-}
-
-impl Default for ClientReady {
-    fn default() -> Self {
-        Self {
-            secret_key: SecretKey::random(&mut rand::thread_rng()),
-        }
+    pub fn public_key(&self) -> &PublicKey {
+        &self.public_key
     }
 }
 
@@ -29,8 +21,7 @@ impl Payload for ClientReady {
     fn encode(&self, mut data: impl std::io::Write, _ctx: &Context) -> Result<(), std::io::Error> {
         use p256::elliptic_curve::sec1::ToEncodedPoint;
 
-        let public_key = self.secret_key.public_key();
-        let uncompressed_point = public_key.to_encoded_point(false);
+        let uncompressed_point = self.public_key.to_encoded_point(false);
         let uncompressed_point_bytes = uncompressed_point.as_bytes();
 
         let uncompressed_point_size = uncompressed_point_bytes.len() as i16;
@@ -56,18 +47,12 @@ impl Payload for ClientReady {
         let encoded_point = EncodedPoint::from_bytes(&uncompressed_point_bytes)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
-        let _public_key = PublicKey::from_encoded_point(&encoded_point)
+        let public_key = PublicKey::from_encoded_point(&encoded_point)
             .into_option()
             .ok_or_else(|| {
                 std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid public key")
             })?;
 
-        // Note: We can't reconstruct the private key from the public key
-        // This is only used for decoding received data, which doesn't make sense for ClientReady
-        // as it's a client->server message. Keeping this for API consistency.
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Unsupported,
-            "Cannot decode ClientReady - private key cannot be reconstructed from public key",
-        ))
+        Ok(Self { public_key })
     }
 }

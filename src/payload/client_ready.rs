@@ -1,8 +1,18 @@
-use crate::payload;
+use p256::elliptic_curve::rand_core::OsRng;
 use p256::PublicKey;
+use p256::SecretKey;
 
 pub struct ClientReady {
     public_key: PublicKey,
+}
+
+impl Default for ClientReady {
+    fn default() -> Self {
+        // Generate a temporary keypair for default
+        let secret_key = SecretKey::random(&mut OsRng);
+        let public_key = secret_key.public_key();
+        Self { public_key }
+    }
 }
 
 impl ClientReady {
@@ -15,44 +25,59 @@ impl ClientReady {
     }
 }
 
-impl payload::Payload for ClientReady {
-    const OPCODE: i8 = 0x02;
+crate::payload! {
+    ClientReady {
+        const OPCODE: i8 = 0x02;
+        type Context = ();
+        type Error = std::io::Error;
 
-    fn encode_payload(&self, mut data: impl std::io::Write, _ctx: &payload::Context) -> Result<(), std::io::Error> {
-        use p256::elliptic_curve::sec1::ToEncodedPoint;
+        fn serialize(&self, _ctx: &Self::Context) -> Result<Vec<u8>, Self::Error> {
+            use p256::elliptic_curve::sec1::ToEncodedPoint;
 
-        let uncompressed_point = self.public_key.to_encoded_point(false);
-        let uncompressed_point_bytes = uncompressed_point.as_bytes();
+            let mut data = Vec::new();
 
-        let uncompressed_point_size = uncompressed_point_bytes.len() as i16;
-        data.write_all(&uncompressed_point_size.to_le_bytes())?;
-        data.write_all(uncompressed_point_bytes)?;
+            let uncompressed_point = self.public_key.to_encoded_point(false);
+            let uncompressed_point_bytes = uncompressed_point.as_bytes();
 
-        Ok(())
-    }
+            let uncompressed_point_size = uncompressed_point_bytes.len() as i16;
+            data.extend_from_slice(&uncompressed_point_size.to_le_bytes());
+            data.extend_from_slice(uncompressed_point_bytes);
 
-    fn decode_payload(data: impl std::io::Read, _ctx: &payload::Context) -> Result<Self, std::io::Error> {
-        use p256::elliptic_curve::sec1::FromEncodedPoint;
-        use p256::{EncodedPoint, PublicKey};
+            Ok(data)
+        }
 
-        let mut uncompressed_point_size_buf = [0u8; 2];
+        fn deserialize(data: &[u8], _ctx: &Self::Context) -> Result<Self, Self::Error> {
+            use p256::elliptic_curve::sec1::FromEncodedPoint;
+            use p256::{EncodedPoint, PublicKey};
 
-        let mut reader = data;
-        reader.read_exact(&mut uncompressed_point_size_buf)?;
+            if data.len() < 2 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "Not enough data for public key size",
+                ));
+            }
 
-        let uncompressed_point_size = i16::from_le_bytes(uncompressed_point_size_buf);
-        let mut uncompressed_point_bytes = vec![0u8; uncompressed_point_size as usize];
-        reader.read_exact(&mut uncompressed_point_bytes)?;
+            let uncompressed_point_size = i16::from_le_bytes(data[0..2].try_into().unwrap()) as usize;
 
-        let encoded_point = EncodedPoint::from_bytes(&uncompressed_point_bytes)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            if data.len() < 2 + uncompressed_point_size {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "Not enough data for public key",
+                ));
+            }
 
-        let public_key = PublicKey::from_encoded_point(&encoded_point)
-            .into_option()
-            .ok_or_else(|| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid public key")
-            })?;
+            let uncompressed_point_bytes = &data[2..2 + uncompressed_point_size];
 
-        Ok(Self { public_key })
+            let encoded_point = EncodedPoint::from_bytes(uncompressed_point_bytes)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+            let public_key = PublicKey::from_encoded_point(&encoded_point)
+                .into_option()
+                .ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid public key")
+                })?;
+
+            Ok(Self { public_key })
+        }
     }
 }

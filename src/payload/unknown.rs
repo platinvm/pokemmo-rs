@@ -1,23 +1,18 @@
-use crate::payload;
+#[derive(Default)]
+pub struct Unknown(pub Vec<u8>);
 
-pub type Unknown = Vec<u8>;
+crate::payload! {
+    Unknown {
+        const OPCODE: i8 = i8::MIN;
+        type Context = ();
+        type Error = std::io::Error;
 
-impl payload::Payload for Unknown {
-    const OPCODE: i8 = i8::MIN;
+        fn serialize(&self, _ctx: &Self::Context) -> Result<Vec<u8>, Self::Error> {
+            Ok(self.0.clone())
+        }
 
-    fn encode_payload(
-        &self,
-        mut data: impl std::io::Write,
-        _ctx: &payload::Context,
-    ) -> Result<(), std::io::Error> {
-        data.write_all(self)?;
-        Ok(())
-    }
-
-    fn decode_payload(data: impl std::io::Read, _ctx: &payload::Context) -> Result<Self, std::io::Error> {
-        let mut buf = Vec::new();
-        let mut reader = data;
-        reader.read_to_end(&mut buf)?;
-        Ok(buf)
+        fn deserialize(data: &[u8], _ctx: &Self::Context) -> Result<Self, Self::Error> {
+            Ok(Unknown(data.to_vec()))
+        }
     }
 }

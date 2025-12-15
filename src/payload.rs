@@ -3,44 +3,54 @@ pub mod client_ready;
 pub mod server_hello;
 pub mod unknown;
 
-use p256::ecdsa::Signature;
-use p256::{PublicKey, SecretKey};
-
-pub trait Payload: Sized {
+pub trait Payload: Sized + Default {
     const OPCODE: i8;
 
-    fn encode_payload(&self, data: impl std::io::Write, ctx: &Context) -> Result<(), std::io::Error>;
-    fn decode_payload(data: impl std::io::Read, ctx: &Context) -> Result<Self, std::io::Error>;
+    type Context: Default;
+    type Error: std::error::Error;
+
+    fn serialize(&self, ctx: &Self::Context) -> Result<Vec<u8>, Self::Error>;
+    fn deserialize(data: &[u8], ctx: &Self::Context) -> Result<Self, Self::Error>;
 }
 
-pub struct Context {
-    pub primary_obfuscation_value: i64,
-    pub secondary_obfuscation_value: i64,
+/// This macro lets you implement the [`Payload`] trait as well as generate roundtrip tests.
+#[macro_export]
+macro_rules! payload {
+    (
+        $ty:ident {
+            const OPCODE: i8 = $opcode:expr;
+            type Context = $ctx:ty;
+            type Error = $err:ty;
 
-    pub checksum_size: Option<i8>,
-
-    pub server_signature: Option<Signature>,
-    pub server_public_key: Option<PublicKey>,
-    pub server_secret_key: Option<SecretKey>,
-
-    pub client_public_key: Option<PublicKey>,
-    pub client_secret_key: Option<SecretKey>,
-}
-
-impl Default for Context {
-    fn default() -> Self {
-        Self {
-            primary_obfuscation_value: 3214621489648854472,
-            secondary_obfuscation_value: -4214651440992349575,
-
-            checksum_size: None,
-
-            server_signature: None,
-            server_public_key: None,
-            server_secret_key: None,
-
-            client_public_key: None,
-            client_secret_key: None,
+            fn serialize $serialize_sig:tt -> Result<Vec<u8>, Self::Error> $serialize:block
+            fn deserialize $deserialize_sig:tt -> Result<Self, Self::Error> $deserialize:block
         }
-    }
+    ) => {
+        impl $crate::payload::Payload for $ty {
+            const OPCODE: i8 = $opcode;
+
+            type Context = $ctx;
+            type Error = $err;
+
+            fn serialize $serialize_sig -> Result<Vec<u8>, Self::Error> $serialize
+            fn deserialize $deserialize_sig -> Result<Self, Self::Error> $deserialize
+        }
+
+        paste::paste! {
+            #[cfg(test)]
+            mod [<roundtrip_test_ $ty:snake>] {
+                use super::*;
+                use $crate::payload::Payload;
+
+                #[test]
+                fn roundtrip() {
+                    let v = $ty::default();
+                    let ctx = <$ty as Payload>::Context::default();
+                    let data = v.serialize(&ctx).expect("serialize failed");
+                    let v2 = <$ty>::deserialize(&data, &ctx).expect("deserialize failed");
+                    assert_eq!(data, v2.serialize(&ctx).expect("re-serialize failed"));
+                }
+            }
+        }
+    };
 }

@@ -1,59 +1,67 @@
 use std::net::TcpStream;
 
+use p256::elliptic_curve::rand_core::OsRng;
 use pokemmo_rs::prelude::*;
 
+const EXTERNAL_SERVER: &str = "loginserver.pokemmo.com:2106";
+const INTERNAL_SERVER: &str = "127.0.0.1:2106";
+
 pub fn main() {
-    let mut stream = TcpStream::connect("127.0.0.1:2106").unwrap();
-    let mut context = Context::default();
+    let args: Vec<String> = std::env::args().collect();
+    let use_internal = args
+        .get(1)
+        .map(|s| s == "--internal" || s == "-i")
+        .unwrap_or(false);
+
+    let server = if use_internal {
+        INTERNAL_SERVER
+    } else {
+        EXTERNAL_SERVER
+    };
+    println!("[INFO]: Connecting to {}", server);
+
+    let mut stream = TcpStream::connect(server).unwrap();
 
     let client_hello = ClientHello::default();
+    let client_hello_ctx = ClientHelloContext::default();
 
     println!("[INFO]: Sending ClientHello");
-    stream.write_packet(&client_hello, &context).unwrap();
+    stream
+        .write_packet(&client_hello, &client_hello_ctx)
+        .unwrap();
     println!("[INFO]: Sent ClientHello");
 
     println!("[INFO]: Receiving ServerHello");
-    let server_hello: ServerHello = stream.read_packet(&context).unwrap();
+    let server_hello: ServerHello = stream.read_packet(&()).unwrap();
     println!("[INFO]: Received ServerHello");
 
-    context.server_public_key = Some(server_hello.public_key().clone());
-    context.server_signature = Some(server_hello.signature().clone());
-    context.checksum_size = Some(server_hello.checksum_size());
-
     // Generate client's key pair
-    let client_secret_key = p256::SecretKey::random(&mut rand::thread_rng());
+    let client_secret_key = p256::SecretKey::random(&mut OsRng);
     let client_public_key = client_secret_key.public_key();
     let client_ready = ClientReady::new(client_public_key.clone());
 
     println!("[INFO]: Sending ClientReady");
-    stream.write_packet(&client_ready, &context).unwrap();
+    stream.write_packet(&client_ready, &()).unwrap();
     println!("[INFO]: Sent ClientReady");
 
-    context.client_public_key = Some(client_public_key);
-    context.client_secret_key = Some(client_secret_key);
     println!("[INFO]: Successfully completed handshake with server.");
 
-    if let Some(ref public_key) = context.server_public_key {
-        let bytes = public_key.to_sec1_bytes();
-        println!("[INFO]: Server Public Key ({} bytes):", bytes.len());
-        println!("{}", format_hex(&bytes));
-    }
+    let public_key = server_hello.public_key();
+    let bytes = public_key.to_sec1_bytes();
+    println!("[INFO]: Server Public Key ({} bytes):", bytes.len());
+    println!("{}", format_hex(&bytes));
 
-    if let Some(ref signature) = context.server_signature {
-        let bytes = signature.to_bytes();
-        println!("[INFO]: Server Signature ({} bytes):", bytes.len());
-        println!("{}", format_hex(&bytes));
-    }
+    let signature = server_hello.signature();
+    let bytes = signature.to_bytes();
+    println!("[INFO]: Server Signature ({} bytes):", bytes.len());
+    println!("{}", format_hex(&bytes));
 
-    if let Some(checksum_size) = context.checksum_size {
-        println!("[INFO]: Checksum Size: {} bytes", checksum_size);
-    }
+    let checksum_size = server_hello.checksum_size();
+    println!("[INFO]: Checksum Size: {} bytes", checksum_size);
 
-    if let Some(ref secret_key) = context.client_secret_key {
-        let bytes = secret_key.to_bytes();
-        println!("[INFO]: Client Secret Key ({} bytes):", bytes.len());
-        println!("{}", format_hex(&bytes));
-    }
+    let bytes = client_secret_key.to_bytes();
+    println!("[INFO]: Client Secret Key ({} bytes):", bytes.len());
+    println!("{}", format_hex(&bytes));
 }
 
 fn format_hex(data: &[u8]) -> String {

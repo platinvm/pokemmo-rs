@@ -1,11 +1,29 @@
-use crate::payload;
 use p256::ecdsa::Signature;
+use p256::elliptic_curve::rand_core::OsRng;
 use p256::PublicKey;
+use p256::SecretKey;
 
 pub struct ServerHello {
     public_key: PublicKey,
     signature: Signature,
     checksum_size: i8,
+}
+
+impl Default for ServerHello {
+    fn default() -> Self {
+        // Generate a temporary keypair for default
+        let secret_key = SecretKey::random(&mut OsRng);
+        let public_key = secret_key.public_key();
+        // Create a dummy signature (this default is mainly for trait compliance)
+        use p256::ecdsa::{SigningKey, signature::Signer};
+        let signing_key = SigningKey::from(&secret_key);
+        let signature: Signature = signing_key.sign(&[0u8; 32]);
+        Self {
+            public_key,
+            signature,
+            checksum_size: 0,
+        }
+    }
 }
 
 impl ServerHello {
@@ -30,78 +48,107 @@ impl ServerHello {
     }
 }
 
-impl payload::Payload for ServerHello {
-    const OPCODE: i8 = 0x01;
+crate::payload! {
+    ServerHello {
+        const OPCODE: i8 = 0x01;
+        type Context = ();
+        type Error = std::io::Error;
 
-    fn encode_payload(
-        &self,
-        mut data: impl std::io::Write,
-        _ctx: &payload::Context,
-    ) -> Result<(), std::io::Error> {
-        use p256::elliptic_curve::sec1::ToEncodedPoint;
+        fn serialize(&self, _ctx: &Self::Context) -> Result<Vec<u8>, Self::Error> {
+            use p256::elliptic_curve::sec1::ToEncodedPoint;
 
-        let uncompressed_point = self.public_key.to_encoded_point(false);
-        let uncompressed_point_bytes = uncompressed_point.as_bytes();
+            let mut data = Vec::new();
 
-        let uncompressed_point_size = uncompressed_point_bytes.len() as i16;
-        data.write_all(&uncompressed_point_size.to_le_bytes())?;
-        data.write_all(uncompressed_point_bytes)?;
+            let uncompressed_point = self.public_key.to_encoded_point(false);
+            let uncompressed_point_bytes = uncompressed_point.as_bytes();
 
-        let signature_bytes = self.signature.to_der();
-        let signature_size = signature_bytes.as_bytes().len() as i16;
-        data.write_all(&signature_size.to_le_bytes())?;
-        data.write_all(signature_bytes.as_bytes())?;
+            let uncompressed_point_size = uncompressed_point_bytes.len() as i16;
+            data.extend_from_slice(&uncompressed_point_size.to_le_bytes());
+            data.extend_from_slice(uncompressed_point_bytes);
 
-        data.write_all(&self.checksum_size.to_le_bytes())?;
+            let signature_bytes = self.signature.to_der();
+            let signature_size = signature_bytes.as_bytes().len() as i16;
+            data.extend_from_slice(&signature_size.to_le_bytes());
+            data.extend_from_slice(signature_bytes.as_bytes());
 
-        Ok(())
-    }
+            data.extend_from_slice(&self.checksum_size.to_le_bytes());
 
-    fn decode_payload(data: impl std::io::Read, _ctx: &payload::Context) -> Result<Self, std::io::Error> {
-        use p256::elliptic_curve::sec1::FromEncodedPoint;
-        use p256::EncodedPoint;
+            Ok(data)
+        }
 
-        let mut uncompressed_point_size_buf = [0u8; 2];
-        let mut signature_size_buf = [0u8; 2];
-        let mut hash_size_buf = [0u8; 1];
+        fn deserialize(data: &[u8], _ctx: &Self::Context) -> Result<Self, Self::Error> {
+            use p256::elliptic_curve::sec1::FromEncodedPoint;
+            use p256::EncodedPoint;
 
-        let mut reader = data;
-        reader.read_exact(&mut uncompressed_point_size_buf)?;
+            let mut cursor = 0;
 
-        let uncompressed_point_size = i16::from_le_bytes(uncompressed_point_size_buf);
-        let mut uncompressed_point_bytes = vec![0u8; uncompressed_point_size as usize];
-        reader.read_exact(&mut uncompressed_point_bytes)?;
+            if data.len() < 2 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "Not enough data for public key size",
+                ));
+            }
+            let uncompressed_point_size = i16::from_le_bytes(data[cursor..cursor + 2].try_into().unwrap()) as usize;
+            cursor += 2;
 
-        let encoded_point = EncodedPoint::from_bytes(&uncompressed_point_bytes)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            if data.len() < cursor + uncompressed_point_size {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "Not enough data for public key",
+                ));
+            }
+            let uncompressed_point_bytes = &data[cursor..cursor + uncompressed_point_size];
+            cursor += uncompressed_point_size;
 
-        let public_key = PublicKey::from_encoded_point(&encoded_point)
-            .into_option()
-            .ok_or_else(|| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid public key")
-            })?;
+            let encoded_point = EncodedPoint::from_bytes(uncompressed_point_bytes)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
-        reader.read_exact(&mut signature_size_buf)?;
-        let signature_size = i16::from_le_bytes(signature_size_buf);
-        let mut signature_bytes = vec![0u8; signature_size as usize];
-        reader.read_exact(&mut signature_bytes)?;
+            let public_key = PublicKey::from_encoded_point(&encoded_point)
+                .into_option()
+                .ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid public key")
+                })?;
 
-        let signature = Signature::from_der(&signature_bytes)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            if data.len() < cursor + 2 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "Not enough data for signature size",
+                ));
+            }
+            let signature_size = i16::from_le_bytes(data[cursor..cursor + 2].try_into().unwrap()) as usize;
+            cursor += 2;
 
-        // TODO: Verify the signature against a trusted public key to ensure server authenticity
-        // This would prevent man-in-the-middle attacks. We need to:
-        // 1. Determine what data the signature is signing (likely the public_key)
-        // 2. Obtain a trusted/root public key for verification
-        // 3. Use signature.verify() or similar to validate
+            if data.len() < cursor + signature_size {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "Not enough data for signature",
+                ));
+            }
+            let signature_bytes = &data[cursor..cursor + signature_size];
+            cursor += signature_size;
 
-        reader.read_exact(&mut hash_size_buf)?;
-        let hash_size = i8::from_le_bytes(hash_size_buf);
+            let signature = Signature::from_der(signature_bytes)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
-        Ok(Self {
-            public_key,
-            signature,
-            checksum_size: hash_size,
-        })
+            // TODO: Verify the signature against a trusted public key to ensure server authenticity
+            // This would prevent man-in-the-middle attacks. We need to:
+            // 1. Determine what data the signature is signing (likely the public_key)
+            // 2. Obtain a trusted/root public key for verification
+            // 3. Use signature.verify() or similar to validate
+
+            if data.len() < cursor + 1 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "Not enough data for hash size",
+                ));
+            }
+            let hash_size = i8::from_le_bytes(data[cursor..cursor + 1].try_into().unwrap());
+
+            Ok(Self {
+                public_key,
+                signature,
+                checksum_size: hash_size,
+            })
+        }
     }
 }

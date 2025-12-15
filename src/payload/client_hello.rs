@@ -1,5 +1,18 @@
-use crate::payload;
 use std::time::SystemTime;
+
+pub struct Context {
+    pub primary_obfuscation_value: i64,
+    pub secondary_obfuscation_value: i64,
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self {
+            primary_obfuscation_value: 3214621489648854472,
+            secondary_obfuscation_value: -4214651440992349575,
+        }
+    }
+}
 
 pub struct ClientHello {
     integrity: i64,
@@ -32,51 +45,53 @@ impl Default for ClientHello {
     }
 }
 
-impl payload::Payload for ClientHello {
-    const OPCODE: i8 = 0x00;
+crate::payload! {
+    ClientHello {
+        const OPCODE: i8 = 0x00;
+        type Context = Context;
+        type Error = std::io::Error;
 
-    fn encode_payload(
-        &self,
-        mut data: impl std::io::Write,
-        ctx: &payload::Context,
-    ) -> Result<(), std::io::Error> {
-        let integrity_obfuscated = self.integrity ^ ctx.primary_obfuscation_value;
+        fn serialize(&self, ctx: &Self::Context) -> Result<Vec<u8>, Self::Error> {
+            let mut data = Vec::new();
 
-        let timestamp_millis = self
-            .timestamp
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as i64;
-        
-        let timestamp_obfuscated =
-            timestamp_millis ^ self.integrity ^ ctx.secondary_obfuscation_value;
+            let integrity_obfuscated = self.integrity ^ ctx.primary_obfuscation_value;
 
-        data.write_all(&integrity_obfuscated.to_le_bytes())?;
-        data.write_all(&timestamp_obfuscated.to_le_bytes())?;
+            let timestamp_millis = self
+                .timestamp
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64;
 
-        Ok(())
-    }
+            let timestamp_obfuscated =
+                timestamp_millis ^ self.integrity ^ ctx.secondary_obfuscation_value;
 
-    fn decode_payload(data: impl std::io::Read, ctx: &payload::Context) -> Result<Self, std::io::Error> {
-        let mut integrity_buf = [0u8; 8];
-        let mut timestamp_buf = [0u8; 8];
+            data.extend_from_slice(&integrity_obfuscated.to_le_bytes());
+            data.extend_from_slice(&timestamp_obfuscated.to_le_bytes());
 
-        let mut reader = data;
-        reader.read_exact(&mut integrity_buf)?;
-        reader.read_exact(&mut timestamp_buf)?;
+            Ok(data)
+        }
 
-        let integrity_obfuscated = i64::from_le_bytes(integrity_buf);
-        let timestamp_obfuscated = i64::from_le_bytes(timestamp_buf);
+        fn deserialize(data: &[u8], ctx: &Self::Context) -> Result<Self, Self::Error> {
+            if data.len() < 16 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "Not enough data for ClientHello",
+                ));
+            }
 
-        let integrity = integrity_obfuscated ^ ctx.primary_obfuscation_value;
-        let timestamp_millis = timestamp_obfuscated ^ integrity ^ ctx.secondary_obfuscation_value;
+            let integrity_obfuscated = i64::from_le_bytes(data[0..8].try_into().unwrap());
+            let timestamp_obfuscated = i64::from_le_bytes(data[8..16].try_into().unwrap());
 
-        let timestamp =
-            SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(timestamp_millis as u64);
+            let integrity = integrity_obfuscated ^ ctx.primary_obfuscation_value;
+            let timestamp_millis = timestamp_obfuscated ^ integrity ^ ctx.secondary_obfuscation_value;
 
-        Ok(Self {
-            integrity,
-            timestamp,
-        })
+            let timestamp =
+                SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(timestamp_millis as u64);
+
+            Ok(Self {
+                integrity,
+                timestamp,
+            })
+        }
     }
 }

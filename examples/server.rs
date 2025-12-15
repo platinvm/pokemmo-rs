@@ -1,19 +1,20 @@
 use std::net::{TcpListener, TcpStream};
 
 use p256::ecdsa::{signature::Signer, SigningKey};
+use p256::elliptic_curve::rand_core::OsRng;
 use p256::SecretKey;
 use pokemmo_rs::prelude::*;
 
 fn handle_client(stream: &mut TcpStream) -> std::io::Result<()> {
-    let mut context = Context::default();
-
     // Generate server's signing key pair
-    let server_secret_key = SecretKey::random(&mut rand::thread_rng());
+    let server_secret_key = SecretKey::random(&mut OsRng);
     let server_public_key = server_secret_key.public_key();
     let signing_key = SigningKey::from(&server_secret_key);
 
+    let client_hello_ctx = ClientHelloContext::default();
+
     println!("[INFO]: Waiting for ClientHello");
-    let _client_hello: ClientHello = stream.read_packet(&context)?;
+    let _client_hello: ClientHello = stream.read_packet(&client_hello_ctx)?;
     println!("[INFO]: Received ClientHello");
 
     // Sign the server's public key to create the signature
@@ -24,14 +25,11 @@ fn handle_client(stream: &mut TcpStream) -> std::io::Result<()> {
     let server_hello = ServerHello::new(server_public_key.clone(), signature, 16);
 
     println!("[INFO]: Sending ServerHello");
-    stream.write_packet(&server_hello, &context)?;
+    stream.write_packet(&server_hello, &())?;
     println!("[INFO]: Sent ServerHello");
 
-    context.server_public_key = Some(server_public_key);
-    context.server_secret_key = Some(server_secret_key);
-
     println!("[INFO]: Waiting for ClientReady");
-    let _client_ready: ClientReady = stream.read_packet(&context)?;
+    let _client_ready: ClientReady = stream.read_packet(&())?;
     println!("[INFO]: Received ClientReady");
 
     println!("[INFO]: Successfully completed handshake with client.");

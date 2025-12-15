@@ -36,7 +36,7 @@ macro_rules! payload {
         paste::paste! {
             #[cfg(test)]
             mod [<roundtrip_test_ $ty:snake>] {
-                use super::*;
+                use super::$ty;
                 use $crate::payload::Payload;
 
                 #[test]

@@ -1,16 +1,16 @@
 use crate::payload;
 
 pub trait Packet<P: payload::Payload>: Sized {
-    fn encode_packet(&self, ctx: &P::Context) -> Result<Vec<u8>, P::Error>;
-    fn decode_packet(data: &[u8], ctx: &P::Context) -> Result<Self, P::Error>;
+    fn encode_packet(&self, ctx: &P::Context) -> std::io::Result<Vec<u8>>;
+    fn decode_packet(data: &[u8], ctx: &P::Context) -> std::io::Result<Self>;
 }
 
 impl<P: payload::Payload> Packet<P> for P {
-    fn encode_packet(&self, ctx: &P::Context) -> Result<Vec<u8>, P::Error> {
+    fn encode_packet(&self, ctx: &P::Context) -> std::io::Result<Vec<u8>> {
         self.serialize(ctx)
     }
 
-    fn decode_packet(data: &[u8], ctx: &P::Context) -> Result<Self, P::Error> {
+    fn decode_packet(data: &[u8], ctx: &P::Context) -> std::io::Result<Self> {
         P::deserialize(data, ctx)
     }
 }
@@ -19,11 +19,11 @@ pub mod ext {
     use crate::payload;
 
     pub trait WritePacket: std::io::Write {
-        fn write_packet<P: payload::Payload<Error = std::io::Error>>(
+        fn write_packet<P: payload::Payload>(
             &mut self,
             packet: &P,
             ctx: &P::Context,
-        ) -> Result<(), std::io::Error> {
+        ) -> std::io::Result<()> {
             let payload_buf = packet.serialize(ctx)?;
 
             let size = payload_buf.len() as i16 + 3;
@@ -40,10 +40,10 @@ pub mod ext {
     impl<T: std::io::Write> WritePacket for T {}
 
     pub trait ReadPacket: std::io::Read {
-        fn read_packet<P: payload::Payload<Error = std::io::Error>>(
+        fn read_packet<P: payload::Payload>(
             &mut self,
             ctx: &P::Context,
-        ) -> Result<P, std::io::Error> {
+        ) -> std::io::Result<P> {
             let mut size_buf = [0u8; 2];
             self.read_exact(&mut size_buf)?;
             let size = i16::from_le_bytes(size_buf);

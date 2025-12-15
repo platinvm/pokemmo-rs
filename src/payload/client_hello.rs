@@ -49,9 +49,8 @@ crate::payload! {
     ClientHello {
         const OPCODE: i8 = 0x00;
         type Context = Context;
-        type Error = std::io::Error;
 
-        fn serialize(&self, ctx: &Self::Context) -> Result<Vec<u8>, Self::Error> {
+        fn serialize(&self, ctx: &Self::Context) -> std::io::Result<Vec<u8>> {
             let mut data = Vec::new();
 
             let integrity_obfuscated = self.integrity ^ ctx.primary_obfuscation_value;
@@ -71,7 +70,7 @@ crate::payload! {
             Ok(data)
         }
 
-        fn deserialize(data: &[u8], ctx: &Self::Context) -> Result<Self, Self::Error> {
+        fn deserialize(data: &[u8], ctx: &Self::Context) -> std::io::Result<Self> {
             if data.len() < 16 {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::UnexpectedEof,

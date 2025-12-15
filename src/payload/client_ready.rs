@@ -29,9 +29,8 @@ crate::payload! {
     ClientReady {
         const OPCODE: i8 = 0x02;
         type Context = ();
-        type Error = std::io::Error;
 
-        fn serialize(&self, _ctx: &Self::Context) -> Result<Vec<u8>, Self::Error> {
+        fn serialize(&self, _ctx: &Self::Context) -> std::io::Result<Vec<u8>> {
             use p256::elliptic_curve::sec1::ToEncodedPoint;
 
             let mut data = Vec::new();
@@ -46,7 +45,7 @@ crate::payload! {
             Ok(data)
         }
 
-        fn deserialize(data: &[u8], _ctx: &Self::Context) -> Result<Self, Self::Error> {
+        fn deserialize(data: &[u8], _ctx: &Self::Context) -> std::io::Result<Self> {
             use p256::elliptic_curve::sec1::FromEncodedPoint;
             use p256::{EncodedPoint, PublicKey};
 

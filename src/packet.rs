@@ -40,10 +40,7 @@ pub mod ext {
     impl<T: std::io::Write> WritePacket for T {}
 
     pub trait ReadPacket: std::io::Read {
-        fn read_packet<P: payload::Payload>(
-            &mut self,
-            ctx: &P::Context,
-        ) -> std::io::Result<P> {
+        fn read_packet<P: payload::Payload>(&mut self, ctx: &P::Context) -> std::io::Result<P> {
             let mut size_buf = [0u8; 2];
             self.read_exact(&mut size_buf)?;
             let size = i16::from_le_bytes(size_buf);

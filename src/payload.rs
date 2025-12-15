@@ -1,7 +1,18 @@
+pub mod client_hello;
+pub mod client_ready;
+pub mod server_hello;
+pub mod unknown;
+
 use p256::ecdsa::Signature;
 use p256::{PublicKey, SecretKey};
 
-/// Context holds the obfuscation values used for encoding/decoding packets.
+pub trait Payload: Sized {
+    const OPCODE: i8;
+
+    fn encode_payload(&self, data: impl std::io::Write, ctx: &Context) -> Result<(), std::io::Error>;
+    fn decode_payload(data: impl std::io::Read, ctx: &Context) -> Result<Self, std::io::Error>;
+}
+
 pub struct Context {
     pub primary_obfuscation_value: i64,
     pub secondary_obfuscation_value: i64,

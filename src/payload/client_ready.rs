@@ -1,4 +1,4 @@
-use crate::{Context, Payload};
+use crate::payload;
 use p256::PublicKey;
 
 pub struct ClientReady {
@@ -15,10 +15,10 @@ impl ClientReady {
     }
 }
 
-impl Payload for ClientReady {
+impl payload::Payload for ClientReady {
     const OPCODE: i8 = 0x02;
 
-    fn encode(&self, mut data: impl std::io::Write, _ctx: &Context) -> Result<(), std::io::Error> {
+    fn encode_payload(&self, mut data: impl std::io::Write, _ctx: &payload::Context) -> Result<(), std::io::Error> {
         use p256::elliptic_curve::sec1::ToEncodedPoint;
 
         let uncompressed_point = self.public_key.to_encoded_point(false);
@@ -31,7 +31,7 @@ impl Payload for ClientReady {
         Ok(())
     }
 
-    fn decode(data: impl std::io::Read, _ctx: &Context) -> Result<Self, std::io::Error> {
+    fn decode_payload(data: impl std::io::Read, _ctx: &payload::Context) -> Result<Self, std::io::Error> {
         use p256::elliptic_curve::sec1::FromEncodedPoint;
         use p256::{EncodedPoint, PublicKey};
 

@@ -1,4 +1,4 @@
-use crate::{Context, Payload};
+use crate::payload;
 use p256::ecdsa::Signature;
 use p256::PublicKey;
 
@@ -30,15 +30,19 @@ impl ServerHello {
     }
 }
 
-impl Payload for ServerHello {
+impl payload::Payload for ServerHello {
     const OPCODE: i8 = 0x01;
 
-    fn encode(&self, mut data: impl std::io::Write, _ctx: &Context) -> Result<(), std::io::Error> {
+    fn encode_payload(
+        &self,
+        mut data: impl std::io::Write,
+        _ctx: &payload::Context,
+    ) -> Result<(), std::io::Error> {
         use p256::elliptic_curve::sec1::ToEncodedPoint;
-        
+
         let uncompressed_point = self.public_key.to_encoded_point(false);
         let uncompressed_point_bytes = uncompressed_point.as_bytes();
-        
+
         let uncompressed_point_size = uncompressed_point_bytes.len() as i16;
         data.write_all(&uncompressed_point_size.to_le_bytes())?;
         data.write_all(uncompressed_point_bytes)?;
@@ -53,10 +57,10 @@ impl Payload for ServerHello {
         Ok(())
     }
 
-    fn decode(data: impl std::io::Read, _ctx: &Context) -> Result<Self, std::io::Error> {
+    fn decode_payload(data: impl std::io::Read, _ctx: &payload::Context) -> Result<Self, std::io::Error> {
         use p256::elliptic_curve::sec1::FromEncodedPoint;
         use p256::EncodedPoint;
-        
+
         let mut uncompressed_point_size_buf = [0u8; 2];
         let mut signature_size_buf = [0u8; 2];
         let mut hash_size_buf = [0u8; 1];
@@ -70,10 +74,12 @@ impl Payload for ServerHello {
 
         let encoded_point = EncodedPoint::from_bytes(&uncompressed_point_bytes)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        
+
         let public_key = PublicKey::from_encoded_point(&encoded_point)
             .into_option()
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid public key"))?;
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid public key")
+            })?;
 
         reader.read_exact(&mut signature_size_buf)?;
         let signature_size = i16::from_le_bytes(signature_size_buf);

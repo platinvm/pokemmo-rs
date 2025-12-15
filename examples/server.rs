@@ -1,11 +1,10 @@
 use std::net::{TcpListener, TcpStream};
 
-use pokemmo_rs::prelude::*;
-use p256::ecdsa::{SigningKey, signature::Signer};
+use p256::ecdsa::{signature::Signer, SigningKey};
 use p256::SecretKey;
+use pokemmo_rs::prelude::*;
 
-fn handle_client(stream: TcpStream) -> std::io::Result<()> {
-    let mut stream = LoggingStream::new(stream);
+fn handle_client(stream: &mut TcpStream) -> std::io::Result<()> {
     let mut context = Context::default();
 
     // Generate server's signing key pair
@@ -46,9 +45,12 @@ pub fn main() {
 
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => {
-                println!("[INFO]: New client connection from {}", stream.peer_addr().unwrap());
-                if let Err(e) = handle_client(stream) {
+            Ok(mut stream) => {
+                println!(
+                    "[INFO]: New client connection from {}",
+                    stream.peer_addr().unwrap()
+                );
+                if let Err(e) = handle_client(&mut stream) {
                     eprintln!("[ERROR]: Failed to handle client: {}", e);
                 }
             }

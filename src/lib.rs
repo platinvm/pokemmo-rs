@@ -1,12 +1,12 @@
-// Module declarations
-pub mod context;
-pub mod extensions;
-pub mod payloads;
-pub mod prelude;
-pub mod traits;
-pub mod utils;
+pub mod packet;
+pub mod payload;
 
-// Re-exports for convenient access
-pub use context::Context;
-pub use extensions::{ReadFrameExt, WriteFrameExt};
-pub use traits::{Packet, Payload};
+pub mod prelude {
+    pub use crate::packet::ext::{ReadPacket, WritePacket};
+
+    pub use crate::payload::client_hello::ClientHello;
+    pub use crate::payload::client_ready::ClientReady;
+    pub use crate::payload::server_hello::ServerHello;
+
+    pub use crate::payload::Context;
+}

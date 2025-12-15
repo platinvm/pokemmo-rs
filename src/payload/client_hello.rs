@@ -1,4 +1,4 @@
-use crate::{Context, Payload};
+use crate::payload;
 use std::time::SystemTime;
 
 pub struct ClientHello {
@@ -32,10 +32,14 @@ impl Default for ClientHello {
     }
 }
 
-impl Payload for ClientHello {
+impl payload::Payload for ClientHello {
     const OPCODE: i8 = 0x00;
 
-    fn encode(&self, mut data: impl std::io::Write, ctx: &Context) -> Result<(), std::io::Error> {
+    fn encode_payload(
+        &self,
+        mut data: impl std::io::Write,
+        ctx: &payload::Context,
+    ) -> Result<(), std::io::Error> {
         let integrity_obfuscated = self.integrity ^ ctx.primary_obfuscation_value;
 
         let timestamp_millis = self
@@ -43,6 +47,7 @@ impl Payload for ClientHello {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_millis() as i64;
+        
         let timestamp_obfuscated =
             timestamp_millis ^ self.integrity ^ ctx.secondary_obfuscation_value;
 
@@ -52,7 +57,7 @@ impl Payload for ClientHello {
         Ok(())
     }
 
-    fn decode(data: impl std::io::Read, ctx: &Context) -> Result<Self, std::io::Error> {
+    fn decode_payload(data: impl std::io::Read, ctx: &payload::Context) -> Result<Self, std::io::Error> {
         let mut integrity_buf = [0u8; 8];
         let mut timestamp_buf = [0u8; 8];
 

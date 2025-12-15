@@ -15,7 +15,7 @@ impl Default for ServerHello {
         let secret_key = SecretKey::random(&mut OsRng);
         let public_key = secret_key.public_key();
         // Create a dummy signature (this default is mainly for trait compliance)
-        use p256::ecdsa::{SigningKey, signature::Signer};
+        use p256::ecdsa::{signature::Signer, SigningKey};
         let signing_key = SigningKey::from(&secret_key);
         let signature: Signature = signing_key.sign(&[0u8; 32]);
         Self {

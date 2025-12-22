@@ -1,7 +1,10 @@
 use std::net::TcpStream;
 
 use p256::elliptic_curve::rand_core::OsRng;
-use pokemmo_rs::*;
+use pokemmo_rs::message::{
+    client_hello::ClientHello, client_ready::ClientReady, server_hello::ServerHello,
+};
+use pokemmo_rs::message::{ReadMessage, WriteMessage};
 
 const PRIMARY_OBFUSCATION_VALUE: i64 = 3214621489648854472;
 const SECONDARY_OBFUSCATION_VALUE: i64 = -4214651440992349575;
@@ -9,10 +12,11 @@ const LOCAL_SERVER: &str = "127.0.0.1:2106";
 const REMOTE_SERVER: &str = "loginserver.pokemmo.com:2106";
 
 pub fn main() {
-    let tcp_stream = TcpStream::connect(LOCAL_SERVER)
+    let stream = TcpStream::connect(LOCAL_SERVER)
         .or_else(|_| TcpStream::connect(REMOTE_SERVER))
         .unwrap();
-    let mut stream = HexLogger::new(tcp_stream);
+
+    let mut stream = HexLogger::new(stream);
 
     let client_hello = ClientHello::new(
         (&() as *const () as usize) as i64,
@@ -21,14 +25,33 @@ pub fn main() {
         SECONDARY_OBFUSCATION_VALUE,
     )
     .unwrap();
-    stream.write_message(client_hello).unwrap();
 
-    stream.read_message::<ServerHello>().unwrap();
+    stream
+        .write_message(
+            client_hello,
+            pokemmo_rs::packet::Encryption::None,
+            pokemmo_rs::packet::Checksum::None,
+        )
+        .unwrap();
+
+    stream
+        .read_message::<ServerHello>(
+            pokemmo_rs::packet::Encryption::None,
+            pokemmo_rs::packet::Checksum::None,
+        )
+        .unwrap();
 
     let client_secret_key = p256::SecretKey::random(&mut OsRng);
     let client_public_key = client_secret_key.public_key();
     let client_ready = ClientReady::new(client_public_key.clone());
-    stream.write_message(client_ready).unwrap();
+
+    stream
+        .write_message(
+            client_ready,
+            pokemmo_rs::packet::Encryption::None,
+            pokemmo_rs::packet::Checksum::None,
+        )
+        .unwrap();
 }
 
 use std::io::{self, Read, Write};

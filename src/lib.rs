@@ -1,3 +1,2 @@
-mod message;
-
-pub use message::*;
+pub mod message;
+pub mod packet;

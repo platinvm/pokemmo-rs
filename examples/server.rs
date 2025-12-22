@@ -4,7 +4,10 @@ use std::net::TcpListener;
 use p256::ecdsa::{signature::Signer, SigningKey};
 use p256::elliptic_curve::rand_core::OsRng;
 use p256::SecretKey;
-use pokemmo_rs::*;
+use pokemmo_rs::message::{
+    client_hello::ClientHello, client_ready::ClientReady, server_hello::ServerHello, ReadMessage,
+    WriteMessage,
+};
 
 pub fn main() {
     let listener = TcpListener::bind("127.0.0.1:2106").unwrap();
@@ -36,7 +39,10 @@ fn handle_client<T: Read + Write>(stream: &mut HexLogger<T>) -> io::Result<()> {
     let signing_key = SigningKey::from(&server_secret_key);
 
     stream.info("Waiting for ClientHello");
-    let _client_hello: ClientHello = stream.read_message()?;
+    let _client_hello: ClientHello = stream.read_message::<ClientHello>(
+        pokemmo_rs::packet::Encryption::None,
+        pokemmo_rs::packet::Checksum::None,
+    )?;
     stream.info("Received ClientHello");
 
     // Sign the server's public key to create the signature
@@ -45,15 +51,22 @@ fn handle_client<T: Read + Write>(stream: &mut HexLogger<T>) -> io::Result<()> {
     let server_hello = ServerHello::new(
         server_public_key.clone(),
         signature,
-        Checksum::HmacSha256(16),
+        pokemmo_rs::message::server_hello::Checksum::None,
     );
 
     stream.info("Sending ServerHello");
-    stream.write_message(server_hello)?;
+    stream.write_message(
+        server_hello,
+        pokemmo_rs::packet::Encryption::None,
+        pokemmo_rs::packet::Checksum::None,
+    )?;
     stream.info("Sent ServerHello");
 
     stream.info("Waiting for ClientReady");
-    let _client_ready: ClientReady = stream.read_message()?;
+    let _client_ready: ClientReady = stream.read_message::<ClientReady>(
+        pokemmo_rs::packet::Encryption::None,
+        pokemmo_rs::packet::Checksum::None,
+    )?;
     stream.info("Received ClientReady");
 
     stream.info("Successfully completed handshake with client.");

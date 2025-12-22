@@ -1,4 +1,37 @@
-use p256::{ecdsa::Signature, PublicKey};
+#[derive(Debug, Clone)]
+pub struct ServerHello {
+    public_key: Vec<u8>,
+    signature: Vec<u8>,
+    checksum_size: i8,
+}
+
+impl ServerHello {
+    pub fn new(
+        public_key: p256::PublicKey,
+        signature: p256::ecdsa::Signature,
+        checksum: Checksum,
+    ) -> Self {
+        ServerHello {
+            public_key: public_key.to_sec1_bytes().to_vec(),
+            signature: signature.to_der().as_bytes().to_vec(),
+            checksum_size: checksum.into(),
+        }
+    }
+
+    pub fn public_key(&self) -> Result<p256::PublicKey, &'static str> {
+        p256::PublicKey::from_sec1_bytes(self.public_key.as_ref())
+            .map_err(|_| "Failed to parse public key from bytes")
+    }
+
+    pub fn signature(&self) -> Result<p256::ecdsa::Signature, &'static str> {
+        p256::ecdsa::Signature::from_der(self.signature.as_ref())
+            .map_err(|_| "Failed to parse signature from bytes")
+    }
+
+    pub fn checksum(&self) -> Result<Checksum, &'static str> {
+        Checksum::try_from(self.checksum_size)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Checksum {
@@ -29,65 +62,79 @@ impl Into<i8> for Checksum {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ServerHello {
-    public_key: Vec<u8>,
-    signature: Vec<u8>,
-    checksum_size: i8,
-}
-
-impl ServerHello {
-    pub fn new(public_key: PublicKey, signature: Signature, checksum: Checksum) -> Self {
-        ServerHello {
-            public_key: public_key.to_sec1_bytes().to_vec(),
-            signature: signature.to_der().as_bytes().to_vec(),
-            checksum_size: checksum.into(),
-        }
-    }
-
-    pub fn public_key(&self) -> Result<PublicKey, &'static str> {
-        PublicKey::from_sec1_bytes(self.public_key.as_ref())
-            .map_err(|_| "Failed to parse public key from bytes")
-    }
-
-    pub fn signature(&self) -> Result<Signature, &'static str> {
-        Signature::from_der(self.signature.as_ref())
-            .map_err(|_| "Failed to parse signature from bytes")
-    }
-
-    pub fn checksum(&self) -> Result<Checksum, &'static str> {
-        Checksum::try_from(self.checksum_size)
-    }
-}
-
-use super::Message;
-
-impl From<ServerHello> for Message {
-    fn from(msg: ServerHello) -> Self {
-        Message::ServerHello {
-            public_key: msg.public_key,
-            signature: msg.signature,
-            checksum_size: msg.checksum_size,
+impl Into<crate::packet::Checksum> for Checksum {
+    fn into(self) -> crate::packet::Checksum {
+        match self {
+            Checksum::None => crate::packet::Checksum::None,
+            _ => crate::packet::Checksum::None,
         }
     }
 }
 
-impl TryFrom<Message> for ServerHello {
-    type Error = &'static str;
-    fn try_from(msg: Message) -> Result<Self, Self::Error> {
-        if let Message::ServerHello {
+impl TryFrom<crate::packet::Payload> for ServerHello {
+    type Error = std::io::Error;
+
+    fn try_from(payload: crate::packet::Payload) -> std::io::Result<Self> {
+        use std::io::Read;
+
+        if payload.opcode != 0x01 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid opcode for ServerHello",
+            ));
+        }
+
+        let mut rdr = std::io::Cursor::new(payload.data);
+
+        let mut size_buf = [0u8; 2];
+        rdr.read_exact(&mut size_buf)?;
+        let size = i16::from_le_bytes(size_buf) as usize;
+        let mut public_key = vec![0u8; size];
+        rdr.read_exact(&mut public_key)?;
+
+        let sig_size = i16::from_le_bytes(size_buf) as usize;
+        let mut signature = vec![0u8; sig_size];
+        rdr.read_exact(&mut signature)?;
+
+        let mut checksum_buf = [0u8; 1];
+        rdr.read_exact(&mut checksum_buf)?;
+        let checksum_size = checksum_buf[0] as i8;
+
+        Ok(ServerHello {
             public_key,
             signature,
             checksum_size,
-        } = msg
-        {
-            Ok(ServerHello {
-                public_key,
-                signature,
-                checksum_size,
-            })
-        } else {
-            Err("Not a ServerHello message")
-        }
+        })
+    }
+}
+
+impl TryInto<crate::packet::Payload> for ServerHello {
+    type Error = std::io::Error;
+
+    fn try_into(self) -> std::io::Result<crate::packet::Payload> {
+        use std::io::Write;
+
+        let mut data = Vec::new();
+
+        let pk_size: i16 = self
+            .public_key
+            .len()
+            .try_into()
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+        data.write(&pk_size.to_le_bytes())?;
+        data.write(&self.public_key)?;
+
+        let sig_size: i16 = self
+            .signature
+            .len()
+            .try_into()
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+
+        data.write(&sig_size.to_le_bytes())?;
+        data.write(&self.signature)?;
+
+        data.write(&[self.checksum_size as u8])?;
+
+        Ok(crate::packet::Payload { opcode: 0x01, data })
     }
 }

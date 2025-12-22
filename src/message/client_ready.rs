@@ -18,23 +18,54 @@ impl ClientReady {
     }
 }
 
-use super::Message;
+impl TryFrom<crate::packet::Payload> for ClientReady {
+    type Error = std::io::Error;
 
-impl From<ClientReady> for Message {
-    fn from(msg: ClientReady) -> Self {
-        Message::ClientReady {
-            public_key: msg.public_key,
+    fn try_from(payload: crate::packet::Payload) -> Result<Self, Self::Error> {
+        if payload.opcode != 0x02 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid opcode for ClientReady message",
+            ));
         }
+
+        if payload.data.len() < 2 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Insufficient data for ClientReady message",
+            ));
+        }
+
+        let pk_size = i16::from_le_bytes([payload.data[0], payload.data[1]]) as usize;
+
+        if payload.data.len() < 2 + pk_size {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Insufficient data for public key in ClientReady message",
+            ));
+        }
+
+        let public_key = payload.data[2..2 + pk_size].to_vec();
+
+        Ok(ClientReady { public_key })
     }
 }
 
-impl TryFrom<Message> for ClientReady {
-    type Error = &'static str;
-    fn try_from(msg: Message) -> Result<Self, Self::Error> {
-        if let Message::ClientReady { public_key } = msg {
-            Ok(ClientReady { public_key })
-        } else {
-            Err("Not a ClientReady message")
-        }
+impl TryInto<crate::packet::Payload> for ClientReady {
+    type Error = std::io::Error;
+
+    fn try_into(self) -> std::io::Result<crate::packet::Payload> {
+        use std::io::Write;
+
+        let mut data = Vec::new();
+        let pk_size: i16 = self
+            .public_key
+            .len()
+            .try_into()
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+        data.write(&pk_size.to_le_bytes())?;
+        data.write(&self.public_key)?;
+
+        Ok(crate::packet::Payload { opcode: 0x02, data })
     }
 }

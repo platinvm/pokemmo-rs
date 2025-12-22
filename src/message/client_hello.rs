@@ -47,31 +47,44 @@ impl ClientHello {
     }
 }
 
-use super::Message;
+impl TryFrom<crate::packet::Payload> for ClientHello {
+    type Error = std::io::Error;
 
-impl From<ClientHello> for Message {
-    fn from(msg: ClientHello) -> Self {
-        Message::ClientHello {
-            obfuscated_integrity: msg.obfuscated_integrity,
-            obfuscated_timestamp: msg.obfuscated_timestamp,
+    fn try_from(payload: crate::packet::Payload) -> Result<Self, Self::Error> {
+        if payload.opcode != 0x00 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid opcode for ClientHello message",
+            ));
         }
+
+        if payload.data.len() != 16 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid data length for ClientHello message",
+            ));
+        }
+
+        let obfuscated_integrity = i64::from_le_bytes(payload.data[0..8].try_into().unwrap());
+        let obfuscated_timestamp = i64::from_le_bytes(payload.data[8..16].try_into().unwrap());
+
+        Ok(ClientHello {
+            obfuscated_integrity,
+            obfuscated_timestamp,
+        })
     }
 }
 
-impl TryFrom<Message> for ClientHello {
-    type Error = &'static str;
-    fn try_from(msg: Message) -> Result<Self, Self::Error> {
-        if let Message::ClientHello {
-            obfuscated_integrity,
-            obfuscated_timestamp,
-        } = msg
-        {
-            Ok(ClientHello {
-                obfuscated_integrity,
-                obfuscated_timestamp,
-            })
-        } else {
-            Err("Not a ClientHello message")
-        }
+impl TryInto<crate::packet::Payload> for ClientHello {
+    type Error = std::io::Error;
+
+    fn try_into(self) -> std::io::Result<crate::packet::Payload> {
+        use std::io::Write;
+
+        let mut data = Vec::new();
+        data.write(&self.obfuscated_integrity.to_le_bytes())?;
+        data.write(&self.obfuscated_timestamp.to_le_bytes())?;
+
+        Ok(crate::packet::Payload { opcode: 0x00, data })
     }
 }

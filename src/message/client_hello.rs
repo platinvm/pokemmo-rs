@@ -1,5 +1,3 @@
-use std::time::SystemTime;
-
 #[derive(Debug, Clone)]
 pub struct ClientHello {
     obfuscated_integrity: i64,
@@ -9,12 +7,12 @@ pub struct ClientHello {
 impl ClientHello {
     pub fn new(
         integrity: i64,
-        timestamp: SystemTime,
+        timestamp: std::time::SystemTime,
         primary_obfuscation_value: i64,
         secondary_obfuscation_value: i64,
     ) -> Result<Self, &'static str> {
         let timestamp_millis: i64 = timestamp
-            .duration_since(SystemTime::UNIX_EPOCH)
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
             .map_err(|_| "Time went backwards")?
             .as_millis()
             .try_into()
@@ -34,7 +32,7 @@ impl ClientHello {
         &self,
         primary_obfuscation_value: i64,
         secondary_obfuscation_value: i64,
-    ) -> Result<SystemTime, &'static str> {
+    ) -> Result<std::time::SystemTime, &'static str> {
         let timestamp_millis = self.obfuscated_timestamp
             ^ self.integrity(primary_obfuscation_value)
             ^ secondary_obfuscation_value;
@@ -43,7 +41,7 @@ impl ClientHello {
             .try_into()
             .map_err(|_| "Timestamp out of range")?;
 
-        Ok(SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(millis))
+        Ok(std::time::UNIX_EPOCH + std::time::Duration::from_millis(millis))
     }
 }
 

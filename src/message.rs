@@ -2,6 +2,10 @@ pub mod client_hello;
 pub mod client_ready;
 pub mod server_hello;
 
+pub use client_hello::ClientHello;
+pub use client_ready::ClientReady;
+pub use server_hello::ServerHello;
+
 pub enum Message {
     ClientHello(client_hello::ClientHello),
     ClientReady(client_ready::ClientReady),

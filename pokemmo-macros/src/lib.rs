@@ -2,6 +2,9 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput, Fields, Type};
 
+// Maximum allowed size for prefixed fields to prevent DoS attacks
+const MAX_PREFIXED_SIZE: usize = 10_485_760; // 10 MB
+
 #[proc_macro_derive(Message, attributes(prefixed))]
 pub fn derive_message(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -50,17 +53,44 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
                     }
                     let mut size_buf = vec![0u8; size_bytes];
                     rdr.read_exact(&mut size_buf)?;
-                    let size_array: [u8; std::mem::size_of::<#prefix_type>()] = size_buf.try_into().unwrap();
-                    #prefix_type::from_le_bytes(size_array) as usize
+                    let size_array: [u8; std::mem::size_of::<#prefix_type>()] = size_buf
+                        .try_into()
+                        .map_err(|_| std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            concat!("Failed to parse size for ", stringify!(#field_name))
+                        ))?;
+                    let size_value = #prefix_type::from_le_bytes(size_array) as usize;
+                    
+                    // Validate size to prevent excessive memory allocation
+                    const MAX_SIZE: usize = #MAX_PREFIXED_SIZE;
+                    if size_value > MAX_SIZE {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            concat!("Field ", stringify!(#field_name), " size exceeds maximum allowed")
+                        ));
+                    }
+                    
+                    size_value
                 };
                 let mut #field_name = vec![0u8; size];
                 rdr.read_exact(&mut #field_name)?;
             });
         } else {
             // Handle primitive types
-            let type_str = quote!(#field_type).to_string();
+            // Check if the type is Vec or String using proper type analysis
+            let is_vec_or_string = match field_type {
+                Type::Path(type_path) => {
+                    if let Some(segment) = type_path.path.segments.last() {
+                        let ident = &segment.ident;
+                        ident == "Vec" || ident == "String"
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            };
             
-            if type_str.contains("Vec") || type_str.contains("String") {
+            if is_vec_or_string {
                 panic!("Vec and String fields must have a #[prefixed(type)] attribute");
             }
 

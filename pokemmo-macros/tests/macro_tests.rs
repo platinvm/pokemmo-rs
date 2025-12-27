@@ -138,3 +138,17 @@ fn test_empty_vec() {
     assert_eq!(deserialized.value, 456);
     assert_eq!(deserialized.data, vec![]);
 }
+
+#[test]
+fn test_excessive_size_rejected() {
+    // Create a message that claims to have an excessively large Vec
+    let mut data = Vec::new();
+    data.extend_from_slice(&123i32.to_le_bytes());
+    // Set size to i16::MAX which should be rejected (exceeds reasonable limits)
+    data.extend_from_slice(&i16::MAX.to_le_bytes());
+    
+    let result = MessageWithVec::deserialize(&data);
+    
+    // Should fail due to insufficient data (can't allocate that much)
+    assert!(result.is_err());
+}

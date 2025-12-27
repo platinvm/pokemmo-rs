@@ -1,78 +1,25 @@
-pub mod client_hello;
-pub mod client_ready;
-pub mod server_hello;
+mod client_hello;
+mod client_ready;
+mod server_hello;
 
-pub use client_hello::ClientHello;
-pub use client_ready::ClientReady;
-pub use server_hello::ServerHello;
+pub use self::client_hello::ClientHello;
+pub use self::client_ready::ClientReady;
+pub use self::server_hello::Checksum;
+pub use self::server_hello::ServerHello;
 
-pub enum Message {
-    ClientHello(client_hello::ClientHello),
-    ClientReady(client_ready::ClientReady),
-    ServerHello(server_hello::ServerHello),
-    Unknown(crate::packet::Payload),
+pub trait Message: Sized {
+    fn serialize(&self) -> std::io::Result<Vec<u8>>;
+    fn deserialize(data: &[u8]) -> std::io::Result<Self>;
 }
 
-impl TryFrom<crate::packet::Payload> for Message {
-    type Error = std::io::Error;
+/*
+todo: implement a macro to reduce boilerplate with this syntax:
 
-    fn try_from(payload: crate::packet::Payload) -> std::io::Result<Self> {
-        match payload.opcode {
-            0x00 => Ok(Message::ClientHello(client_hello::ClientHello::try_from(
-                payload,
-            )?)),
-            0x01 => Ok(Message::ServerHello(server_hello::ServerHello::try_from(
-                payload,
-            )?)),
-            0x02 => Ok(Message::ClientReady(client_ready::ClientReady::try_from(
-                payload,
-            )?)),
-            _ => Ok(Message::Unknown(payload)),
-        }
-    }
+#[derive(Message)]
+pub struct MyMessage {
+    field1: u32,
+    field2: i64,
+    #[prefixed(i16)] // required for Vec and String fields
+    field3: Vec<u8>,
 }
-
-impl TryInto<crate::packet::Payload> for Message {
-    type Error = std::io::Error;
-
-    fn try_into(self) -> std::io::Result<crate::packet::Payload> {
-        match self {
-            Message::ClientHello(msg) => msg.try_into(),
-            Message::ServerHello(msg) => msg.try_into(),
-            Message::ClientReady(msg) => msg.try_into(),
-            Message::Unknown(payload) => Ok(payload),
-        }
-    }
-}
-
-pub trait ReadMessage: crate::packet::ReadPacket {
-    fn read_message<T>(
-        &mut self,
-        encryption: crate::packet::Encryption,
-        checksum: crate::packet::Checksum,
-    ) -> std::io::Result<T>
-    where
-        T: TryFrom<crate::packet::Payload, Error = std::io::Error>,
-    {
-        let packet = self.read_packet()?;
-        let payload = packet.payload(encryption, checksum);
-        T::try_from(payload)
-    }
-}
-
-impl<T: crate::packet::ReadPacket> ReadMessage for T {}
-
-pub trait WriteMessage: crate::packet::WritePacket {
-    fn write_message<T: TryInto<crate::packet::Payload, Error = std::io::Error>>(
-        &mut self,
-        message: T,
-        encryption: crate::packet::Encryption,
-        checksum: crate::packet::Checksum,
-    ) -> std::io::Result<()> {
-        let payload = message.try_into()?;
-        let packet = crate::packet::Packet::new(payload, encryption, checksum)?;
-        self.write_packet(&packet)
-    }
-}
-
-impl<T: crate::packet::WritePacket> WriteMessage for T {}
+*/

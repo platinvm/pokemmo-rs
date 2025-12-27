@@ -1,4 +1,3 @@
-#[derive(Debug, Clone)]
 pub struct ServerHello {
     public_key: Vec<u8>,
     signature: Vec<u8>,
@@ -62,29 +61,11 @@ impl Into<i8> for Checksum {
     }
 }
 
-impl Into<crate::packet::Checksum> for Checksum {
-    fn into(self) -> crate::packet::Checksum {
-        match self {
-            Checksum::None => crate::packet::Checksum::None,
-            _ => crate::packet::Checksum::None,
-        }
-    }
-}
-
-impl TryFrom<crate::packet::Payload> for ServerHello {
-    type Error = std::io::Error;
-
-    fn try_from(payload: crate::packet::Payload) -> std::io::Result<Self> {
+impl super::Message for ServerHello {
+    fn deserialize(data: &[u8]) -> std::io::Result<Self> {
         use std::io::Read;
 
-        if payload.opcode != 0x01 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid opcode for ServerHello",
-            ));
-        }
-
-        let mut rdr = std::io::Cursor::new(payload.data);
+        let mut rdr = std::io::Cursor::new(data);
 
         let mut size_buf = [0u8; 2];
         rdr.read_exact(&mut size_buf)?;
@@ -92,6 +73,7 @@ impl TryFrom<crate::packet::Payload> for ServerHello {
         let mut public_key = vec![0u8; size];
         rdr.read_exact(&mut public_key)?;
 
+        rdr.read_exact(&mut size_buf)?;
         let sig_size = i16::from_le_bytes(size_buf) as usize;
         let mut signature = vec![0u8; sig_size];
         rdr.read_exact(&mut signature)?;
@@ -106,12 +88,8 @@ impl TryFrom<crate::packet::Payload> for ServerHello {
             checksum_size,
         })
     }
-}
 
-impl TryInto<crate::packet::Payload> for ServerHello {
-    type Error = std::io::Error;
-
-    fn try_into(self) -> std::io::Result<crate::packet::Payload> {
+    fn serialize(&self) -> std::io::Result<Vec<u8>> {
         use std::io::Write;
 
         let mut data = Vec::new();
@@ -121,8 +99,8 @@ impl TryInto<crate::packet::Payload> for ServerHello {
             .len()
             .try_into()
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
-        data.write(&pk_size.to_le_bytes())?;
-        data.write(&self.public_key)?;
+        data.write_all(&pk_size.to_le_bytes())?;
+        data.write_all(&self.public_key)?;
 
         let sig_size: i16 = self
             .signature
@@ -130,11 +108,11 @@ impl TryInto<crate::packet::Payload> for ServerHello {
             .try_into()
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
 
-        data.write(&sig_size.to_le_bytes())?;
-        data.write(&self.signature)?;
+        data.write_all(&sig_size.to_le_bytes())?;
+        data.write_all(&self.signature)?;
 
-        data.write(&[self.checksum_size as u8])?;
+        data.write_all(&[self.checksum_size as u8])?;
 
-        Ok(crate::packet::Payload { opcode: 0x01, data })
+        Ok(data)
     }
 }

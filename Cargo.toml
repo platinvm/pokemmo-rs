@@ -3,8 +3,5 @@ name = "pokemmo-rs"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-full = ["*"]
-
 [dependencies]
 p256 = { version = "0.13", features = ["ecdsa"] }

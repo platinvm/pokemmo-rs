@@ -24,8 +24,6 @@ const MAX_PREFIXED_SIZE: usize = 10_485_760; // 10 MB
 /// - Integer types: i8, i16, i32, i64, u8, u16, u32, u64 (serialized as little-endian)
 /// - Vec<u8> with #[prefixed(T)] attribute where T is an integer type for the length prefix
 /// - String with #[prefixed(T)] attribute (not yet implemented but can be added)
-
-// Example usage is available in pokemmo-macros/tests/macro_tests.rs
 #[proc_macro_derive(Message, attributes(prefixed))]
 pub fn derive_message(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

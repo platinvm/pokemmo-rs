@@ -12,14 +12,4 @@ pub trait Message: Sized {
     fn deserialize(data: &[u8]) -> std::io::Result<Self>;
 }
 
-/*
-todo: implement a macro to reduce boilerplate with this syntax:
-
-#[derive(Message)]
-pub struct MyMessage {
-    field1: u32,
-    field2: i64,
-    #[prefixed(i16)] // required for Vec and String fields
-    field3: Vec<u8>,
-}
-*/
+pub use pokemmo_macros::Message;

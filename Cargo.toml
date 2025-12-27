@@ -6,4 +6,3 @@ edition = "2021"
 [dependencies]
 p256 = { version = "0.13", features = ["ecdsa"] }
 pokemmo-macros = { path = "macros" }
-pokemmo-codec-macro = { path = "pokemmo-codec-macro" }

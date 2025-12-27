@@ -1,4 +1,4 @@
-use pokemmo_codec_macro::codec;
+use super::codec;
 
 #[codec]
 pub enum Login {

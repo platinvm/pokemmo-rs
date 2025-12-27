@@ -1,4 +1,4 @@
-use crate::message::Message;
+use super::Message;
 
 #[derive(Message)]
 pub struct ClientReady {

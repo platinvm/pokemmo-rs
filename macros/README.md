@@ -52,3 +52,33 @@ let decoded = MyMessage::deserialize(&bytes)?;
 - Vec fields are prefixed with their length, encoded as the specified integer type
 - The macro validates that Vec and String fields have the `#[prefixed(T)]` attribute
 - Deserialization includes bounds checking to prevent buffer overruns
+
+## `#[codec]` Enum Macro
+
+Implements the `Codec` trait for enums that represent message opcodes and payloads.
+
+### Rules
+
+- Non-`Unknown` variants must have an explicit opcode literal (e.g., `= 0x00u8`).
+- Each non-`Unknown` variant must be a tuple variant with exactly one unnamed field containing a type that implements `Message`.
+- The enum’s `Unknown` variant is optional. When present, it must be a struct variant with named fields:
+  - `opcode`: may be `u8` or `i8` (encoded/decoded as a little-endian single byte)
+  - `data`: `Vec<u8>` carrying the raw payload
+
+### Example
+
+```rust
+#[codec]
+pub enum Login {
+    ClientHello(crate::message::ClientHello) = 0x00u8,
+    ServerHello(crate::message::ServerHello) = 0x01u8,
+    ClientReady(crate::message::ClientReady) = 0x02u8,
+    // Unknown uses its own opcode (i8) and raw data
+    Unknown { opcode: i8, data: Vec<u8> },
+}
+```
+
+### Behavior
+
+- `encode()`: prefixes the payload with the variant opcode; casts explicit opcodes to `u8`. For `Unknown`, encodes the `opcode` field as a single LE byte (supporting `u8` or `i8`).
+- `decode()`: reads the first byte as the opcode, matches known opcodes to deserialize the payload via `Message::deserialize`, and falls back to `Unknown` by mapping the opcode into the declared type (`u8` or `i8`).

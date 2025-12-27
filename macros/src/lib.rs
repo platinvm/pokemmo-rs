@@ -188,14 +188,53 @@ pub fn codec(_attr: TokenStream, item: TokenStream) -> TokenStream {
     };
     
     let mut variants_with_opcodes = Vec::new();
-    let mut unknown_variant = None;
+    // Track Unknown variant presence and whether its opcode is i8
+    let mut has_unknown = false;
+    let mut unknown_is_i8 = false;
     
     for variant in &data_enum.variants {
         let variant_name = &variant.ident;
         
         // Check if this is the Unknown variant
         if variant_name == "Unknown" {
-            unknown_variant = Some(variant_name.clone());
+            has_unknown = true;
+            // Validate fields and detect opcode type
+            match &variant.fields {
+                Fields::Named(named) => {
+                    for f in &named.named {
+                        if let Some(ident) = &f.ident {
+                            if ident == "opcode" {
+                                if let Type::Path(tp) = &f.ty {
+                                    if let Some(seg) = tp.path.segments.last() {
+                                        let id = seg.ident.to_string();
+                                        match id.as_str() {
+                                            "i8" => unknown_is_i8 = true,
+                                            "u8" => unknown_is_i8 = false,
+                                            _ => {
+                                                return syn::Error::new_spanned(
+                                                    &f.ty,
+                                                    "Unknown opcode field must be of type u8 or i8"
+                                                ).to_compile_error().into();
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    return syn::Error::new_spanned(
+                                        &f.ty,
+                                        "Unknown opcode field must be a primitive integer type"
+                                    ).to_compile_error().into();
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    return syn::Error::new_spanned(
+                        variant,
+                        "Unknown variant must use named fields with an `opcode` and `data`"
+                    ).to_compile_error().into();
+                }
+            }
             continue;
         }
         
@@ -253,7 +292,7 @@ pub fn codec(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut all_encode_arms = variants_with_opcodes.iter().map(|(name, opcode, _)| {
         quote! {
             #enum_name::#name(msg) => {
-                let mut msg_data = vec![#opcode];
+                let mut msg_data = vec![#opcode as u8];
                 msg_data.extend_from_slice(&msg.serialize()?);
                 msg_data
             }
@@ -261,10 +300,16 @@ pub fn codec(_attr: TokenStream, item: TokenStream) -> TokenStream {
     }).collect::<Vec<_>>();
     
     // Add unknown variant arm if present
-    if unknown_variant.is_some() {
+    if has_unknown {
+        let opcode_push = if unknown_is_i8 {
+            quote! { i8::to_le_bytes(*opcode)[0] }
+        } else {
+            quote! { *opcode }
+        };
         all_encode_arms.push(quote! {
             #enum_name::Unknown { opcode, data } => {
-                let mut msg_data = vec![*opcode];
+                let mut msg_data = Vec::with_capacity(1 + data.len());
+                msg_data.push(#opcode_push);
                 msg_data.extend_from_slice(data);
                 msg_data
             }
@@ -280,10 +325,15 @@ pub fn codec(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     });
     
-    let decode_default_arm = if unknown_variant.is_some() {
+    let decode_default_arm = if has_unknown {
+        let opcode_expr = if unknown_is_i8 {
+            quote! { i8::from_le_bytes([opcode]) }
+        } else {
+            quote! { opcode }
+        };
         quote! {
             opcode => Ok(#enum_name::Unknown {
-                opcode,
+                opcode: #opcode_expr,
                 data: data[1..].to_vec(),
             })
         }

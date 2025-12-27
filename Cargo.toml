@@ -1,8 +1,8 @@
 [package]
-name = "pokemmo-rs"
+name = "pokemmo"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 p256 = { version = "0.13", features = ["ecdsa"] }
-pokemmo-macros = { path = "pokemmo-macros" }
+pokemmo-macros = { path = "macros" }

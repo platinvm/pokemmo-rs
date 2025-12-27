@@ -213,20 +213,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pokemmo"
+version = "0.1.0"
+dependencies = [
+ "p256",
+ "pokemmo-macros",
+]
+
+[[package]]
 name = "pokemmo-macros"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "pokemmo-rs"
-version = "0.1.0"
-dependencies = [
- "p256",
- "pokemmo-macros",
 ]
 
 [[package]]

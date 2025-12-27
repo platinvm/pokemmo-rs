@@ -1,5 +1,5 @@
 use p256::elliptic_curve::rand_core::OsRng;
-use pokemmo_rs::{
+use pokemmo::{
     codec::Login,
     context::WithContext,
     message::{ClientHello, ClientReady, ServerHello},

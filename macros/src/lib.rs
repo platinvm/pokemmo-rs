@@ -5,25 +5,53 @@ use syn::{parse_macro_input, Data, DeriveInput, Fields, Type, Expr, Lit};
 // Maximum allowed size for prefixed fields to prevent DoS attacks
 const MAX_PREFIXED_SIZE: usize = 10_485_760; // 10 MB
 
-/// The Message derive macro has been implemented and can be used with this syntax:
+/// Derives serialization and deserialization for message payload types.
 ///
-/// ```rs
-/// use crate::message::Message;
+/// Implements the `Message` trait, automatically generating `serialize()` and `deserialize()` methods.
+/// All fields are serialized in little-endian byte order. Variable-length fields must be annotated.
+///
+/// # Supported Types
+///
+/// - **Integer types**: `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`
+///   - Serialized as little-endian bytes.
+/// - **Vec<u8>**: Requires `#[prefixed(T)]` where `T` is an integer type for the length prefix.
+///   - Format: `[length: T LE, data...]`
+/// - **String**: Requires `#[prefixed(T)]` attribute (similar to Vec<u8>).
+///
+/// # Attributes
+///
+/// - `#[prefixed(T)]`: Marks a `Vec` or `String` field with a length prefix type.
+///   - Example: `#[prefixed(i16)]` prefixes the field with a 2-byte i16 length.
+///
+/// # Examples
+///
+/// ```ignore
+/// use pokemmo_macros::Message;
 ///
 /// #[derive(Message)]
 /// pub struct MyMessage {
-///     field1: u32,
-///     field2: i64,
-///     #[prefixed(i16)] // required for Vec and String fields
-///     field3: Vec<u8>,
+///     version: u32,
+///     count: i16,
+///     #[prefixed(i16)]
+///     payload: Vec<u8>,
 /// }
+///
+/// let msg = MyMessage { version: 1, count: 10, payload: vec![1, 2, 3] };
+/// let bytes = msg.serialize()?;
+/// let decoded = MyMessage::deserialize(&bytes)?;
 /// ```
 ///
-/// The macro automatically implements the Message trait with serialize() and deserialize() methods.
-/// Supported types:
-/// - Integer types: i8, i16, i32, i64, u8, u16, u32, u64 (serialized as little-endian)
-/// - Vec<u8> with #[prefixed(T)] attribute where T is an integer type for the length prefix
-/// - String with #[prefixed(T)] attribute (not yet implemented but can be added)
+/// # Errors
+///
+/// The generated `deserialize()` method returns an error if:
+/// - The input data is truncated (insufficient bytes).
+/// - A prefixed length exceeds `MAX_PREFIXED_SIZE` (10 MB) to prevent DoS attacks.
+///
+/// # Panic
+///
+/// The macro panics at compile time if:
+/// - The struct contains tuple variants or unit variants.
+/// - A `Vec` or `String` field lacks a `#[prefixed(T)]` attribute.
 #[proc_macro_derive(Message, attributes(prefixed))]
 pub fn derive_message(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -157,17 +185,55 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-/// A procedural macro that implements the Codec trait for enums with explicit opcodes.
+/// A procedural macro that implements the `Codec` trait for enums with opcode-based message routing.
 ///
-/// # Example
+/// Automatically generates `encode()` and `decode()` implementations that handle opcode-based
+/// message serialization and deserialization. Each variant corresponds to a specific opcode,
+/// and the macro generates the necessary match logic.
+///
+/// # Requirements
+///
+/// - **Non-Unknown variants**: Must have an explicit opcode literal (e.g., `= 0x00u8`).
+///   - Must be tuple variants with exactly one unnamed field.
+///   - The field type must implement the `Message` trait.
+/// - **Unknown variant** (optional): Must have named fields:
+///   - `opcode`: Type `u8` or `i8` (encoded/decoded as a single little-endian byte).
+///   - `data`: Type `Vec<u8>` carrying the raw payload.
+///
+/// # Behavior
+///
+/// - **`encode()`**: Prepends the opcode to the serialized message payload.
+///   - For known variants, the opcode is cast to `u8`.
+///   - For `Unknown`, the opcode is encoded as a single LE byte (supports `u8` or `i8`).
+/// - **`decode()`**: Reads the first byte as the opcode and dispatches to the appropriate variant.
+///   - If the opcode matches a known variant, deserializes the payload via `Message::deserialize()`.
+///   - Otherwise, falls back to `Unknown` (mapping the byte to the declared opcode type).
+///
+/// # Examples
+///
 /// ```ignore
+/// use pokemmo_macros::codec;
+/// use pokemmo::message::Message;
+///
 /// #[codec]
-/// pub enum MyCodec {
-///     VariantA(crate::message::VariantA) = 0x00u8,
-///     VariantB(crate::message::VariantB) = 0x01u8,
-///     Unknown{opcode: u8, data: Vec<u8>},
+/// pub enum LoginCodec {
+///     Hello(HelloMessage) = 0x00u8,
+///     Goodbye(GoodbyeMessage) = 0x01u8,
+///     Unknown { opcode: i8, data: Vec<u8> },
 /// }
+///
+/// let msg = LoginCodec::Hello(hello);
+/// let encoded = msg.encode()?;
+/// let decoded = LoginCodec::decode(&encoded)?;
 /// ```
+///
+/// # Generated Impls
+///
+/// In addition to `Codec`, the macro also generates:
+/// - `Into<Codec> for MessageType` for each known variant.
+/// - `TryFrom<Codec> for MessageType` for each known variant.
+///
+/// These enable ergonomic type conversion via `.into()` and `.try_into()`.
 #[proc_macro_attribute]
 pub fn codec(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);

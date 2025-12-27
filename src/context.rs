@@ -1,9 +1,9 @@
-pub struct Context<S: std::io::Read + std::io::Write, C: crate::codec::Codec> {
+pub struct ContextedStream<S: std::io::Read + std::io::Write, C: crate::codec::Codec> {
     stream: S,
     _marker: std::marker::PhantomData<C>,
 }
 
-impl<T, C> std::ops::Deref for Context<T, C>
+impl<T, C> std::ops::Deref for ContextedStream<T, C>
 where
     T: std::io::Read + std::io::Write,
     C: crate::codec::Codec,
@@ -14,7 +14,7 @@ where
     }
 }
 
-impl<T, C> std::ops::DerefMut for Context<T, C>
+impl<T, C> std::ops::DerefMut for ContextedStream<T, C>
 where
     T: std::io::Read + std::io::Write,
     C: crate::codec::Codec,
@@ -24,7 +24,7 @@ where
     }
 }
 
-impl<S, C> Context<S, C>
+impl<S, C> ContextedStream<S, C>
 where
     S: std::io::Read + std::io::Write,
     C: crate::codec::Codec,
@@ -56,11 +56,11 @@ where
 }
 
 pub trait WithContext: std::io::Read + std::io::Write {
-    fn with_context<C: crate::codec::Codec>(self) -> Context<Self, C>
+    fn with_context<C: crate::codec::Codec>(self) -> ContextedStream<Self, C>
     where
         Self: Sized,
     {
-        Context {
+        ContextedStream {
             stream: self,
             _marker: std::marker::PhantomData,
         }

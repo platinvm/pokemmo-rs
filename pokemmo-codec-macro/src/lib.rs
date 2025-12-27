@@ -95,7 +95,7 @@ pub fn codec(_attr: TokenStream, item: TokenStream) -> TokenStream {
     });
     
     // Generate encode match arms
-    let encode_arms = variants_with_opcodes.iter().map(|(name, opcode, _)| {
+    let mut all_encode_arms = variants_with_opcodes.iter().map(|(name, opcode, _)| {
         quote! {
             #enum_name::#name(msg) => {
                 let mut msg_data = vec![#opcode];
@@ -103,17 +103,18 @@ pub fn codec(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 msg_data
             }
         }
-    });
+    }).collect::<Vec<_>>();
     
-    let encode_unknown_arm = unknown_variant.as_ref().map(|_| {
-        quote! {
+    // Add unknown variant arm if present
+    if unknown_variant.is_some() {
+        all_encode_arms.push(quote! {
             #enum_name::Unknown { opcode, data } => {
                 let mut msg_data = vec![*opcode];
                 msg_data.extend_from_slice(data);
                 msg_data
             }
-        }
-    });
+        });
+    }
     
     // Generate decode match arms
     let decode_arms = variants_with_opcodes.iter().map(|(name, opcode, inner_type)| {
@@ -124,7 +125,7 @@ pub fn codec(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     });
     
-    let decode_default_arm = if let Some(_) = unknown_variant {
+    let decode_default_arm = if unknown_variant.is_some() {
         quote! {
             opcode => Ok(#enum_name::Unknown {
                 opcode,
@@ -177,8 +178,7 @@ pub fn codec(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 use crate::message::Message;
                 
                 Ok(match self {
-                    #(#encode_arms,)*
-                    #encode_unknown_arm
+                    #(#all_encode_arms),*
                 })
             }
             

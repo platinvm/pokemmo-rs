@@ -10,7 +10,7 @@ const MAX_PREFIXED_SIZE: usize = 10_485_760; // 10 MB
 /// Implements the `Message` trait, automatically generating `serialize()` and `deserialize()` methods.
 /// All fields are serialized in little-endian byte order. Variable-length fields must be annotated.
 ///
-/// # Supported Types
+/// ## Supported Types
 ///
 /// - **Integer types**: `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`
 ///   - Serialized as little-endian bytes.
@@ -18,12 +18,12 @@ const MAX_PREFIXED_SIZE: usize = 10_485_760; // 10 MB
 ///   - Format: `[length: T LE, data...]`
 /// - **String**: Requires `#[prefixed(T)]` attribute (similar to Vec<u8>).
 ///
-/// # Attributes
+/// ## Attributes
 ///
 /// - `#[prefixed(T)]`: Marks a `Vec` or `String` field with a length prefix type.
 ///   - Example: `#[prefixed(i16)]` prefixes the field with a 2-byte i16 length.
 ///
-/// # Examples
+/// ## Examples
 ///
 /// ```ignore
 /// use pokemmo_macros::Message;
@@ -41,13 +41,13 @@ const MAX_PREFIXED_SIZE: usize = 10_485_760; // 10 MB
 /// let decoded = MyMessage::deserialize(&bytes)?;
 /// ```
 ///
-/// # Errors
+/// ## Errors
 ///
 /// The generated `deserialize()` method returns an error if:
 /// - The input data is truncated (insufficient bytes).
 /// - A prefixed length exceeds `MAX_PREFIXED_SIZE` (10 MB) to prevent DoS attacks.
 ///
-/// # Panic
+/// ## Panic
 ///
 /// The macro panics at compile time if:
 /// - The struct contains tuple variants or unit variants.
@@ -191,7 +191,7 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
 /// message serialization and deserialization. Each variant corresponds to a specific opcode,
 /// and the macro generates the necessary match logic.
 ///
-/// # Requirements
+/// ## Requirements
 ///
 /// - **Non-Unknown variants**: Must have an explicit opcode literal (e.g., `= 0x00u8`).
 ///   - Must be tuple variants with exactly one unnamed field.
@@ -200,7 +200,7 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
 ///   - `opcode`: Type `u8` or `i8` (encoded/decoded as a single little-endian byte).
 ///   - `data`: Type `Vec<u8>` carrying the raw payload.
 ///
-/// # Behavior
+/// ## Behavior
 ///
 /// - **`encode()`**: Prepends the opcode to the serialized message payload.
 ///   - For known variants, the opcode is cast to `u8`.
@@ -209,7 +209,7 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
 ///   - If the opcode matches a known variant, deserializes the payload via `Message::deserialize()`.
 ///   - Otherwise, falls back to `Unknown` (mapping the byte to the declared opcode type).
 ///
-/// # Examples
+/// ## Examples
 ///
 /// ```ignore
 /// use pokemmo_macros::codec;
@@ -227,7 +227,7 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
 /// let decoded = LoginCodec::decode(&encoded)?;
 /// ```
 ///
-/// # Generated Impls
+/// ## Generated Impls
 ///
 /// In addition to `Codec`, the macro also generates:
 /// - `Into<Codec> for MessageType` for each known variant.

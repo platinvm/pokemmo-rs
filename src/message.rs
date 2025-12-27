@@ -15,7 +15,7 @@ pub use self::server_hello::ServerHello;
 /// All primitive integer types are encoded as little-endian bytes. Variable-length fields
 /// like `Vec<u8>` require a length prefix, specified via the `#[prefixed(T)]` attribute.
 ///
-/// # Examples
+/// ## Examples
 ///
 /// ```ignore
 /// use pokemmo::message::{Message, ClientHello};
@@ -30,7 +30,7 @@ pub trait Message: Sized {
     /// Integer fields are encoded as little-endian. Fields marked with `#[prefixed(T)]`
     /// are encoded as `[length_prefix, data...]` where `length_prefix` is of type `T`.
     ///
-    /// # Errors
+    /// ## Errors
     ///
     /// Returns an error if I/O operations fail or data sizes exceed representable ranges.
     fn serialize(&self) -> std::io::Result<Vec<u8>>;
@@ -40,7 +40,7 @@ pub trait Message: Sized {
     /// The byte layout must match the structure expected by the implementation.
     /// All fields are consumed in order; extra data is ignored.
     ///
-    /// # Errors
+    /// ## Errors
     ///
     /// Returns an error if:
     /// - The data is truncated and insufficient bytes remain.

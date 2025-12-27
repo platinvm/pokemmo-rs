@@ -1,15 +1,15 @@
 use super::Message;
 
-/// Server's response to `ClientHello`, containing cryptographic material and checksum configuration.
+/// ServerHello (opcode 0x01) responds with server authentication data.
 ///
-/// `ServerHello` provides the server's public key and a signature for establishing
-/// encrypted communication. It also specifies the checksum algorithm to use for message integrity.
+/// As per pokemmo-spec, the server provides:
+/// - Server Public Key (length-prefixed, SEC1 uncompressed)
+/// - ECDSA Signature (length-prefixed)
+/// - Checksum Size (1 byte) — negotiated integrity protection size
 ///
-/// # Fields
-///
-/// - `public_key`: The server's ECDSA public key in SEC1 format, prefixed with a 2-byte length.
-/// - `signature`: The server's ECDSA signature over its public key, in DER format, prefixed with a 2-byte length.
-/// - `checksum_size`: Configuration for message integrity checks (None, CRC16, or HMAC-SHA256).
+/// Notes:
+/// - This implementation encodes the signature in DER; the spec allows variable-length signatures.
+/// - Checksum size mapping per spec: NoOp=0, CRC16=2, HMAC-SHA256=4..=32 (default 16).
 #[derive(Message)]
 pub struct ServerHello {
     #[prefixed(i16)]
@@ -20,13 +20,12 @@ pub struct ServerHello {
 }
 
 impl ServerHello {
-    /// Creates a new `ServerHello` message from cryptographic components.
+    /// Creates a new `ServerHello` with public key, signature, and checksum parameters.
     ///
-    /// # Arguments
-    ///
-    /// - `public_key`: The server's P-256 public key.
-    /// - `signature`: The server's ECDSA signature over the public key.
-    /// - `checksum`: The checksum configuration for the session.
+    /// Arguments:
+    /// - `public_key`: Server's P-256 public key (SEC1 uncompressed).
+    /// - `signature`: ECDSA signature over the public key (DER-encoded here).
+    /// - `checksum`: Negotiated checksum (NoOp, CRC16, HMAC-SHA256(4..=32)).
     pub fn new(
         public_key: p256::PublicKey,
         signature: p256::ecdsa::Signature,
@@ -41,9 +40,8 @@ impl ServerHello {
 
     /// Parses the server's public key from its SEC1-encoded bytes.
     ///
-    /// # Errors
-    ///
-    /// Returns an error if the bytes are not a valid P-256 SEC1 public key.
+    /// Errors:
+    /// - Fails if bytes are not a valid P-256 SEC1 public key.
     pub fn public_key(&self) -> Result<p256::PublicKey, &'static str> {
         p256::PublicKey::from_sec1_bytes(self.public_key.as_ref())
             .map_err(|_| "Failed to parse public key from bytes")
@@ -51,9 +49,8 @@ impl ServerHello {
 
     /// Parses the server's signature from its DER-encoded bytes.
     ///
-    /// # Errors
-    ///
-    /// Returns an error if the bytes are not a valid DER-encoded ECDSA signature.
+    /// Errors:
+    /// - Fails if bytes are not a valid DER-encoded ECDSA signature.
     pub fn signature(&self) -> Result<p256::ecdsa::Signature, &'static str> {
         p256::ecdsa::Signature::from_der(self.signature.as_ref())
             .map_err(|_| "Failed to parse signature from bytes")
@@ -70,11 +67,12 @@ impl ServerHello {
 }
 
 #[derive(Debug, Clone)]
-/// Specifies the message integrity check algorithm for the session.
+/// Message integrity configuration negotiated during handshake.
 ///
-/// - `None`: No integrity checking (size byte = 0).
-/// - `Crc16`: CRC-16 checksum (size byte = 1).
-/// - `HmacSha256(size)`: HMAC-SHA256 with configurable size, where `size` is 4-32 (size byte = 4..=32).
+/// Spec mapping:
+/// - `None`: No checksum (`checksum_size = 0`)
+/// - `Crc16`: CRC16 (`checksum_size = 2`)
+/// - `HmacSha256(size)`: HMAC-SHA256 with `size` in 4..=32 (`checksum_size = size`)
 pub enum Checksum {
     None,
     Crc16,

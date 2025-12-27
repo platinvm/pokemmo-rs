@@ -1,14 +1,14 @@
 use super::codec;
 
-/// The login protocol codec defining the message types exchanged during authentication.
+/// Login protocol codec (handshake opcodes per pokemmo-spec).
 ///
-/// The login sequence is:
-/// 1. Client sends `ClientHello` (opcode 0x00)
-/// 2. Server responds with `ServerHello` (opcode 0x01)
-/// 3. Client acknowledges with `ClientReady` (opcode 0x02)
+/// Sequence:
+/// - `ClientHello` (0x00): initiates handshake with obfuscated values
+/// - `ServerHello` (0x01): returns server public key, signature, checksum size
+/// - `ClientReady` (0x02): sends client public key to complete handshake
 ///
-/// Any unrecognized opcode is captured as `Unknown`, carrying its own opcode as `i8`
-/// and the raw payload data for extensibility and debugging.
+/// Unrecognized opcodes fall back to `Unknown`, which carries its own opcode (`i8`, LE)
+/// and the raw payload for debugging/extensibility.
 #[codec]
 pub enum Login {
     /// Client's initial greeting message.
@@ -19,7 +19,7 @@ pub enum Login {
     ClientReady(crate::message::ClientReady) = 0x02u8,
     /// Unrecognized message variant for future extensibility.
     ///
-    /// - `opcode`: The raw opcode byte (signed, allowing negative values).
-    /// - `data`: The unparsed payload.
+    /// - `opcode` (i8 LE): raw opcode byte (signed)
+    /// - `data`: unparsed payload bytes
     Unknown { opcode: i8, data: Vec<u8> },
 }

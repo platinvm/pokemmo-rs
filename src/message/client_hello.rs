@@ -1,15 +1,14 @@
 use super::Message;
 
-/// Initial greeting message sent by the client to the server.
+/// ClientHello (opcode 0x00) initiates the CTLS handshake as per pokemmo-spec.
 ///
-/// `ClientHello` carries obfuscated integrity and timestamp values that are used
-/// for secure challenge-response authentication. The values are obfuscated using
-/// XOR operations with client-provided constants.
+/// The client sends two 8-byte values:
+/// - Obfuscated Random Key (spec): random value XOR'd with `key1`
+/// - Obfuscated Timestamp (spec): timestamp XOR'd with `key2` and the random key
 ///
-/// # Fields
-///
-/// - `obfuscated_integrity`: The integrity value XORed with the primary obfuscation constant.
-/// - `obfuscated_timestamp`: The timestamp XORed with integrity and the secondary obfuscation constant.
+/// In this implementation, `obfuscated_integrity` represents the random key obfuscated
+/// with `primary_obfuscation_value` (spec: `key1`), and `obfuscated_timestamp` is
+/// obfuscated with both the integrity value and `secondary_obfuscation_value` (spec: `key2`).
 #[derive(Message)]
 pub struct ClientHello {
     obfuscated_integrity: i64,
@@ -17,19 +16,16 @@ pub struct ClientHello {
 }
 
 impl ClientHello {
-    /// Creates a new `ClientHello` message with the given parameters.\n    ///
-    /// # Arguments
+    /// Creates a new `ClientHello` following the spec obfuscation scheme.
     ///
-    /// - `integrity`: A unique value representing client integrity (e.g., derived from a pointer).
-    /// - `timestamp`: The current system time.
-    /// - `primary_obfuscation_value`: XOR constant to obfuscate the integrity value.
-    /// - `secondary_obfuscation_value`: XOR constant to obfuscate the timestamp with integrity.
+    /// Arguments:
+    /// - `integrity` (spec: random key): any 64-bit value, XOR'd with `primary_obfuscation_value` (key1).
+    /// - `timestamp`: current `SystemTime`, encoded as milliseconds since UNIX_EPOCH.
+    /// - `primary_obfuscation_value` (spec: key1): 64-bit obfuscation constant.
+    /// - `secondary_obfuscation_value` (spec: key2): 64-bit obfuscation constant.
     ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - System time cannot be accessed or calculated relative to UNIX_EPOCH.
-    /// - The timestamp in milliseconds exceeds the range of `i64`.
+        /// ## Errors:
+    /// - Fails if `timestamp` cannot be represented as `i64` milliseconds.
     pub fn new(
         integrity: i64,
         timestamp: std::time::SystemTime,
@@ -49,25 +45,22 @@ impl ClientHello {
         })
     }
 
-    /// Recovers the original integrity value by de-obfuscating with the primary constant.
+    /// Recovers the original random key (integrity) by de-obfuscating with key1.
     ///
-    /// # Arguments
-    ///
-    /// - `primary_obfuscation_value`: The same constant used in `new()`.
+    /// Arguments:
+    /// - `primary_obfuscation_value` (spec: key1)
     pub fn integrity(&self, primary_obfuscation_value: i64) -> i64 {
         self.obfuscated_integrity ^ primary_obfuscation_value
     }
 
-    /// Recovers the original timestamp by de-obfuscating with integrity and secondary constant.
+    /// Recovers the original timestamp by de-obfuscating with integrity and key2.
     ///
-    /// # Arguments
+    /// Arguments:
+    /// - `primary_obfuscation_value` (spec: key1)
+    /// - `secondary_obfuscation_value` (spec: key2)
     ///
-    /// - `primary_obfuscation_value`: The same constant used in `new()`.
-    /// - `secondary_obfuscation_value`: The same constant used in `new()`.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the recovered timestamp is negative and cannot be converted to `u64`.
+        /// ## Errors:
+    /// - Fails if recovered milliseconds are out of range for `u64`.
     pub fn timestamp(
         &self,
         primary_obfuscation_value: i64,

@@ -2,14 +2,21 @@
 ///
 /// `ContextedStream` wraps a stream (typically a `TcpStream`) and provides high-level methods
 /// for reading and writing typed messages with automatic encoding and decoding.
-/// It enforces a length-prefixed message framing protocol.
+/// It enforces the pokemmo-spec length-prefixed framing protocol.
 ///
-/// # Type Parameters
+/// Framing per spec:
+/// - Handshake phase (unencrypted): `Length (i16 LE) || Packet`
+/// - Secure phase (encrypted): `Length (i16 LE) || Encrypted Data || Checksum`
+///
+/// Note: This crate currently demonstrates the handshake message flow; encryption and
+/// checksums are documented in the spec but not implemented here.
+///
+/// ## Type Parameters
 ///
 /// - `S`: The underlying stream type (must implement `Read` and `Write`).
 /// - `C`: The codec type defining which message variants are supported.
 ///
-/// # Examples
+/// ## Examples
 ///
 /// ```ignore
 /// use pokemmo::context::WithContext;
@@ -58,11 +65,11 @@ where
     /// `length` includes the 2-byte length prefix itself. The payload is decoded as
     /// codec type `C` and then converted to the target type `T` via `TryFrom`.
     ///
-    /// # Type Parameters
+    /// ## Type Parameters
     ///
     /// - `T`: The target message type, must be convertible from the codec type `C`.
     ///
-    /// # Errors
+    /// ## Errors
     ///
     /// Returns an error if:
     /// - Reading from the stream fails (I/O error).
@@ -89,11 +96,11 @@ where
     /// Encodes the message using the codec and prefixes it with a 2-byte little-endian
     /// length field (including the length field itself). The message is then written to the stream.
     ///
-    /// # Type Parameters
+    /// ## Type Parameters
     ///
     /// - The message must be convertible to the codec type `C` via `Into`.
     ///
-    /// # Errors
+    /// ## Errors
     ///
     /// Returns an error if:
     /// - Writing to the stream fails (I/O error).
